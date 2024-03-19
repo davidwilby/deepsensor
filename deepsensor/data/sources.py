@@ -549,9 +549,16 @@ def get_earthenv_auxiliary_data(
                     f.write(response.read())
 
             # Read data
-            da = xr.open_dataset(fname).to_array().squeeze().load()
+            try:
+                import rioxarray
+            except:
+                raise ImportError(
+                    "The rioxarray package is required for reading EarthEnv GeoTIFFs.\
+                                  Please install with `pip install rioxarray` or `pip install deepsensor[earthenv]`."
+                )
+            da = rioxarray.open_rasterio(fname).squeeze().load()
             da = da.rename({"y": "lat", "x": "lon"})
-            da = da.drop(["band", "spatial_ref", "variable"])
+            da = da.drop_vars(["band", "spatial_ref", "variable"], errors="ignore")
             da.name = var_ID
             da = da.sel(lat=slice(lat_max, lat_min), lon=slice(lon_min, lon_max))
             da_dict[var_ID] = da
