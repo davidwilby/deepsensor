@@ -81,7 +81,7 @@ class ProbabilisticModel:
         var = self.variance(task)
         return var**0.5
 
-    def stddev(self, *args, **kwargs):
+    def stddev(self, *args, **kwargs): # noqa
         return self.std(*args, **kwargs)
 
     def covariance(self, task: Task, *args, **kwargs):
@@ -609,7 +609,7 @@ class DeepSensorModel(ProbabilisticModel):
         return pred
 
 
-def main():  # pragma: no cover
+def main():  # pragma: no cover # noqa
     import deepsensor.tensorflow
     from deepsensor.data.loader import TaskLoader
     from deepsensor.data.processor import DataProcessor
