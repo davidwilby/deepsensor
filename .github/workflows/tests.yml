@@ -8,24 +8,19 @@ jobs:
   test:
     runs-on: ${{ matrix.os }}
     strategy:
+      fail-fast: false
       matrix:
         os: [ubuntu-latest]
         python-version: ['3.8', '3.11']
 
     steps:
-    - uses: actions/checkout@v2
+    - uses: actions/checkout@v4
     - name: Set up Python ${{ matrix.python-version }}
-      uses: actions/setup-python@v2
+      uses: actions/setup-python@v4
       with:
         python-version: ${{ matrix.python-version }}
-    - name: Delete huge unnecessary folders, and clean apt cache
-      run: |
-        rm -rf /opt/hostedtoolcache
-        rm -rf /usr/share/dotnet
-        rm -rf /opt/ghc
-        rm -rf "$AGENT_TOOLSDIRECTORY"
-        sudo apt-get clean
-      shell: bash
+    - name: Free Disk Space (Ubuntu)
+      uses: jlumbroso/free-disk-space@main
     - name: Print space
       run: df -h
     - name: Install dependencies
@@ -33,6 +28,11 @@ jobs:
         python -m pip install --upgrade pip
         pip install -r requirements/requirements.txt
         pip install -r requirements/requirements.dev.txt
+    - name: Check python installation
+      shell: bash
+      run: |
+        which python
+        python --version
     - name: Test with tox
       run: tox
     - name: Run coveralls
