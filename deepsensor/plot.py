@@ -98,7 +98,9 @@ def task(
 
     with plt.rc_context(params):
         fig, axes = plt.subplots(
-            nrows=nrows, ncols=ncols, figsize=(ncols * figsize, nrows * figsize)
+            nrows=nrows,
+            ncols=ncols,
+            figsize=(ncols * figsize, nrows * figsize),
         )
         if nrows == 1:
             axes = axes[np.newaxis]
@@ -302,7 +304,8 @@ def offgrid_context(
     colors: Optional[str] = None,
     **scatter_kwargs,
 ) -> None:
-    """Plot the off-grid context points on ``axes``.
+    """
+    Plot the off-grid context points on ``axes``.
 
     Uses a provided :class:`~.data.processor.DataProcessor` to unnormalise the
     context coordinates if provided.
@@ -333,7 +336,7 @@ def offgrid_context(
             Additional keyword arguments to pass to the scatter plot.
 
     Returns:
-        None.
+        None
     """
     if markers is None:
         # all matplotlib markers
@@ -1010,7 +1013,9 @@ def prediction(
 
                 # rotate date times
                 ax.set_xticklabels(
-                    ax.get_xticklabels(), rotation=45, horizontalalignment="right"
+                    ax.get_xticklabels(),
+                    rotation=45,
+                    horizontalalignment="right",
                 )
 
             ax.set_title(f"{var_ID} {param}")
