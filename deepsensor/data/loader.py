@@ -709,8 +709,8 @@ class TaskLoader:
             Y_c = df.values.T
         elif isinstance(sampling_strat, np.ndarray):
             X_c = sampling_strat.astype(self.dtype)
-            x1match = np.in1d(df.index.get_level_values("x1"), X_c[0])
-            x2match = np.in1d(df.index.get_level_values("x2"), X_c[1])
+            x1match = np.isin(df.index.get_level_values("x1"), X_c[0])
+            x2match = np.isin(df.index.get_level_values("x2"), X_c[1])
             num_matches = np.sum(x1match & x2match)
 
             # Check that we got all the samples we asked for

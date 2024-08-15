@@ -298,8 +298,7 @@ class GreedyAlgorithm:
             return y
 
     def _build_acquisition_fn_ds(self, X_s: Union[xr.Dataset, xr.DataArray]):
-        """
-        Initialise xr.DataArray for storing acquisition function values on
+        """Initialise xr.DataArray for storing acquisition function values on
         search grid
         """
         prepend_dims = ["iteration"]  # , "sample"]  # MC sample TODO
@@ -433,8 +432,7 @@ class GreedyAlgorithm:
         return best_x_query
 
     def _single_greedy_iteration(self, acquisition_fn: AcquisitionFunction):
-        """
-        Run a single greedy grid search iteration and append the optimal
+        """Run a single greedy grid search iteration and append the optimal
         context location to self.X_new.
         """
         importances = self._search(acquisition_fn)
@@ -450,8 +448,7 @@ class GreedyAlgorithm:
         tasks: Union[List[Task], Task],
         diff: bool = False,
     ) -> Tuple[pd.DataFrame, xr.Dataset]:
-        """
-        Iteratively propose new context points using the greedy sensor placement algorithm.
+        """Iteratively propose new context points using the greedy sensor placement algorithm.
 
         Args:
             acquisition_fn (:class:`~.active_learning.acquisition_fns.AcquisitionFunction`):
