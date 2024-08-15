@@ -285,7 +285,7 @@ class GreedyAlgorithm:
         return infill_ds
 
     def _sample_y_infill(self, infill_ds, time, x1, x2):
-        """Sample infill values at a single location"""
+        """Sample infill values at a single location."""
         assert isinstance(infill_ds, (xr.Dataset, xr.DataArray))
         y = infill_ds.sel(time=time, x1=x1, x2=x2)
         if isinstance(y, xr.Dataset):
@@ -299,7 +299,7 @@ class GreedyAlgorithm:
 
     def _build_acquisition_fn_ds(self, X_s: Union[xr.Dataset, xr.DataArray]):
         """Initialise xr.DataArray for storing acquisition function values on
-        search grid
+        search grid.
         """
         prepend_dims = ["iteration"]  # , "sample"]  # MC sample TODO
         prepend_coords = {
@@ -319,7 +319,7 @@ class GreedyAlgorithm:
         return acquisition_fn_ds
 
     def _init_acquisition_fn_object(self, X_s: xr.Dataset):
-        """Instantiate acquisition function object"""
+        """Instantiate acquisition function object."""
         # Unnormalise before instantiating
         X_s = self.model.data_processor.map_coords(X_s, unnorm=True)
         if isinstance(X_s, (xr.Dataset, xr.DataArray)):
