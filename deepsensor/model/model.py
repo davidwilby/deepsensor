@@ -899,10 +899,15 @@ class DeepSensorModel(ProbabilisticModel):
                         else:
                             patch_x2 = data_array.coords[orig_x2_name].max().values, data_array.coords[orig_x2_name].min().values
                         patch_x1_index, patch_x2_index =  get_index(patch_x1, patch_x2)
-                        
+
+                        height = data_array.sizes[orig_x1_name]
+                        width = data_array.sizes[orig_x2_name]
+                        print('height and width of patch', height, width)
+
                         b_x1_min, b_x1_max = patch_overlap[0], patch_overlap[0]
                         b_x2_min, b_x2_max = patch_overlap[1], patch_overlap[1]
-
+                        print('patch location', patch_x1_index[0], patch_x1_index[1], patch_x2_index[0], patch_x2_index[1])
+                        print('Original patch overlap', b_x1_min, b_x1_max, b_x2_min, b_x2_max)
                         """
                         Do not remove border for the patches along top and left of dataset and change overlap size for last patch in each row and column.
                         
@@ -918,35 +923,43 @@ class DeepSensorModel(ProbabilisticModel):
                         """
                         if patch_x2_index[0] == data_x2_index[0]:
                             b_x2_min = 0
+                            b_x2_max = b_x2_max + 1
                         elif patch_x2_index[1] == data_x2_index[1]:
                             b_x2_max = 0
                             patch_row_prev = preds[i-1]
                             if x2_ascend:
-                                prev_patch_x2_max = get_index(int(patch_row_prev[var_name].coords[orig_x2_name].max()), x1 = False)
+                                prev_patch_x2_max = get_index(patch_row_prev[var_name].coords[orig_x2_name].max(), x1 = False)
                                 b_x2_min = (prev_patch_x2_max - patch_x2_index[0])-patch_overlap[1]
                             else:
-                                prev_patch_x2_min = get_index(int(patch_row_prev[var_name].coords[orig_x2_name].min()), x1 = False)
+                                prev_patch_x2_min = get_index(patch_row_prev[var_name].coords[orig_x2_name].min(), x1 = False)
                                 b_x2_min = (patch_x2_index[0] -prev_patch_x2_min)-patch_overlap[1]
+                        else:
+                            b_x2_max = b_x2_max + 1
 
                         if patch_x1_index[0] == data_x1_index[0]:
                             b_x1_min = 0
-                        elif abs(patch_x1_index[1] - data_x1_index[1]) < 2:
+                            b_x1_max = b_x1_max + 1
+                        elif patch_x1_index[1] == data_x1_index[1]:
                             b_x1_max = 0
                             patch_prev = preds[i-patches_per_row]
                             if x1_ascend:
-                                prev_patch_x1_max = get_index(int(patch_prev[var_name].coords[orig_x1_name].max()), x1 = True)
+                                prev_patch_x1_max = get_index(patch_prev[var_name].coords[orig_x1_name].max(), x1 = True)
                                 b_x1_min = (prev_patch_x1_max - patch_x1_index[0])- patch_overlap[0]
                             else:
-                                prev_patch_x1_min = get_index(int(patch_prev[var_name].coords[orig_x1_name].min()), x1 = True)
+                                prev_patch_x1_min = get_index(patch_prev[var_name].coords[orig_x1_name].min(), x1 = True)
 
                                 b_x1_min = (prev_patch_x1_min- patch_x1_index[0])- patch_overlap[0]
-
+                        else:
+                            b_x1_max = b_x1_max + 1
 
                         patch_clip_x1_min = int(b_x1_min)
                         patch_clip_x1_max = int(data_array.sizes[orig_x1_name] - b_x1_max)
                         patch_clip_x2_min = int(b_x2_min)
                         patch_clip_x2_max = int(data_array.sizes[orig_x2_name] - b_x2_max)
-
+                        print('borders', b_x1_min, b_x1_max, b_x2_min, b_x2_max)
+                        print('clipped patch extent', patch_clip_x1_min, patch_clip_x1_max, patch_clip_x2_min, patch_clip_x2_max)
+                        print('clipped patch location', patch_x1_index[0] + b_x1_min, patch_x1_index[1] - b_x1_max, 
+                              patch_x2_index[0] + b_x2_min, patch_x2_index[1] - b_x2_max)
                         patch_clip = data_array.isel(**{orig_x1_name: slice(patch_clip_x1_min, patch_clip_x1_max),
                                                         orig_x2_name: slice(patch_clip_x2_min, patch_clip_x2_max)})
 
