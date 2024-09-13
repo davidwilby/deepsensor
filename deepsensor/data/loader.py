@@ -191,7 +191,7 @@ class TaskLoader:
         ) = self.infer_context_and_target_var_IDs()
 
         self.coord_bounds = self._compute_global_coordinate_bounds()
-        self.coord_directions = self._compute_x1x2_direction()
+        self.coord_ascending_from_top_left = self._compute_coord_ascend_from_top_left()
 
     def _set_config(self):
         """Instantiate a config dictionary for the TaskLoader object"""
@@ -835,9 +835,9 @@ class TaskLoader:
 
         return [x1_min, x1_max, x2_min, x2_max]
     
-    def _compute_x1x2_direction(self) -> str:
+    def _compute_coord_ascend_from_top_left(self) -> str:
         """
-        Compute whether the x1 and x2 coords are ascending or descending.
+        Compute whether the x1 and x2 coords are ascending or descending from top left corner.
 
         Returns
         -------
@@ -854,11 +854,27 @@ class TaskLoader:
                 coord_x2_top= var.x2[0]
                 coord_x2_bottom= var.x2[-1]
             #Todo- what to input for pd.dataframe
-            elif isinstance(var, (pd.DataFrame, pd.Series)):
+            elif isinstance(var, (pd.DataFrame, pd.Series)): 
+                # Steps to find coordinate direction if using pandas
+                # 1. Find min/max x1 and x2
+                # 2. Unnormalise to find corresponding coordinates of x1/x2 min/max
+                # 3. Use same rules as with xarray to set x1_ascend and x2_ascend to true or false.              
                 var_x1_min = var.index.get_level_values("x1").min()
                 var_x1_max = var.index.get_level_values("x1").max()
                 var_x2_min = var.index.get_level_values("x2").min()
                 var_x2_max = var.index.get_level_values("x2").max()
+                x1_minmax = xr.DataArray([var_x1_min, var_x1_max], dims="x1", name="x1")
+                x2_minmax = xr.DataArray([var_x2_min, var_x2_max], dims="x2", name="x2")
+                x1x2_minmax = xr.Dataset(coords={"x1": x1_minmax, "x2": x2_minmax})
+
+                # TODO current error message as data_processor is not imported. 
+                orig_x1_name = data_processor.x1_name
+                orig_x2_name = data_processor.x2_name
+
+                # Unnormalise coordinates of min and max of x1 and x2
+                overlap_unnorm_xr = data_processor.unnormalise(x1x2_minmax)
+                coord_x1_left, coord_x1_right = overlap_unnorm_xr.coords[orig_x1_name]
+                coord_x2_top, coord_x2_bottom = overlap_unnorm_xr.coords[orig_x2_name]
 
             x1_ascend = True
             x2_ascend = True
@@ -1478,7 +1494,7 @@ class TaskLoader:
         patch_list = []
 
         # Todo: simplify these elif statements
-        if self.coord_directions['x1'] == False and self.coord_directions['x2'] == True:
+        if self.coord_ascending_from_top_left['x1'] == False and self.coord_ascending_from_top_left['x2'] == True:
             for y in np.arange(x1_max, x1_min, -dy):
                 for x in np.arange(x2_min, x2_max, dx):
                     if y - x1_extend < x1_min:
@@ -1494,7 +1510,7 @@ class TaskLoader:
                     bbox = [y0 - x1_extend, y0, x0, x0 + x2_extend]
                     patch_list.append(bbox)
 
-        elif self.coord_directions['x1'] == False and self.coord_directions['x2'] == False:
+        elif self.coord_ascending_from_top_left['x1'] == False and self.coord_ascending_from_top_left['x2'] == False:
             for y in np.arange(x1_max, x1_min, -dy):
                 for x in np.arange(x2_max, x2_min, -dx):
                     if y - x1_extend < x1_min:
@@ -1510,7 +1526,7 @@ class TaskLoader:
                     bbox = [y0 - x1_extend, y0, x0 - x2_extend, x0]
                     patch_list.append(bbox)
 
-        elif self.coord_directions['x1'] == True and self.coord_directions['x2'] == False:
+        elif self.coord_ascending_from_top_left['x1'] == True and self.coord_ascending_from_top_left['x2'] == False:
             for y in np.arange(x1_min, x1_max, dy):
                 for x in np.arange(x2_max, x2_min, -dx):
                     if y + x1_extend > x1_max:
