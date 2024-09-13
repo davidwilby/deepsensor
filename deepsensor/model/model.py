@@ -836,7 +836,6 @@ class DeepSensorModel(ProbabilisticModel):
                 if x1:
                     coord_index = np.argmin(np.abs(X_t.coords[orig_x1_name].values - patch_coord))
                 else:
-                    print('i am getting at the x2 coords')
                     coord_index = np.argmin(np.abs(X_t.coords[orig_x2_name].values - patch_coord)) 
                 return coord_index
 
@@ -886,8 +885,6 @@ class DeepSensorModel(ProbabilisticModel):
 
             data_x1_index, data_x2_index = get_index(data_x1, data_x2)
             patches_clipped = {var_name: [] for var_name in patch_preds[0].keys()}
-            print('x1/x2 direction', x1_ascend, x2_ascend)
-            print('image extent in x1/x2', data_x1_index[0], data_x1_index[1], data_x2_index[0], data_x2_index[1])
 
             for i, patch_pred in enumerate(patch_preds):
                 for var_name, data_array in patch_pred.items():
@@ -905,8 +902,6 @@ class DeepSensorModel(ProbabilisticModel):
                         
                         b_x1_min, b_x1_max = patch_overlap[0], patch_overlap[0]
                         b_x2_min, b_x2_max = patch_overlap[1], patch_overlap[1]
-                        print('patch location', patch_x1_index[0], patch_x1_index[1], patch_x2_index[0], patch_x2_index[1])
-                        print('Original patch overlap', b_x1_min, b_x1_max, b_x2_min, b_x2_max)
                         """
                         Do not remove border for the patches along top and left of dataset and change overlap size for last patch in each row and column.
                         
@@ -928,7 +923,6 @@ class DeepSensorModel(ProbabilisticModel):
                             if x2_ascend:
                                 prev_patch_x2_max = get_index((patch_row_prev[var_name].coords[orig_x2_name].max()), x1 = False)
                                 b_x2_min = (prev_patch_x2_max - patch_x2_index[0])-patch_overlap[1]
-                                print('whats going on', prev_patch_x2_max, patch_x2_index[0], patch_overlap[1])
                             else:
                                 prev_patch_x2_min = get_index((patch_row_prev[var_name].coords[orig_x2_name].min()), x1 = False)
                                 b_x2_min = (patch_x2_index[0] -prev_patch_x2_min)-patch_overlap[1]
@@ -945,16 +939,12 @@ class DeepSensorModel(ProbabilisticModel):
                                 prev_patch_x1_min = get_index((patch_prev[var_name].coords[orig_x1_name].min()), x1 = True)
 
                                 b_x1_min = (prev_patch_x1_min- patch_x1_index[0])- patch_overlap[0]
-                                print('whats going on', prev_patch_x1_min, patch_x1_index[0], patch_overlap[0])     
 
                         patch_clip_x1_min = int(b_x1_min)
                         patch_clip_x1_max = int(data_array.sizes[orig_x1_name] - b_x1_max)
                         patch_clip_x2_min = int(b_x2_min)
                         patch_clip_x2_max = int(data_array.sizes[orig_x2_name] - b_x2_max)
-                        print('borders', b_x1_min, b_x1_max, b_x2_min, b_x2_max)
-                        print('clipped patch extent', patch_clip_x1_min, patch_clip_x1_max, patch_clip_x2_min, patch_clip_x2_max)
-                        print('clipped patch location', patch_x1_index[0] + b_x1_min, patch_x1_index[1] - b_x1_max, 
-                              patch_x2_index[0] + b_x2_min, patch_x2_index[1] - b_x2_max)
+                        patch_x2_index[0] + b_x2_min, patch_x2_index[1] - b_x2_max)
                         patch_clip = data_array.isel(**{orig_x1_name: slice(patch_clip_x1_min, patch_clip_x1_max),
                                                         orig_x2_name: slice(patch_clip_x2_min, patch_clip_x2_max)})
 
