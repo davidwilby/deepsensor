@@ -806,7 +806,7 @@ class TaskLoader:
             raise ValueError(f"Unknown variable type {type(var)}")
         return var
 
-    def task_generation(
+    def task_generation(     # noqa: D102
         self,
         date: pd.Timestamp,
         context_sampling: Union[
