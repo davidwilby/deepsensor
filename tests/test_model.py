@@ -18,6 +18,7 @@ from deepsensor.data.processor import DataProcessor
 from deepsensor.data.loader import TaskLoader
 from deepsensor.model.convnp import ConvNP
 from deepsensor.train.train import Trainer
+from deepsensor.eval.metrics import compute_errors
 
 from tests.utils import gen_random_data_xr, gen_random_data_pandas
 
@@ -54,8 +55,15 @@ class TestModel(unittest.TestCase):
     def setUpClass(cls):
         # super().__init__(*args, **kwargs)
         # It's safe to share data between tests because the TaskLoader does not modify data
+        cls.var_ID = "2m_temp"
         cls.da = _gen_data_xr()
+        cls.da.name = cls.var_ID
         cls.df = _gen_data_pandas()
+        cls.df.name = cls.var_ID
+        # Various tests assume we have a single target set with a single variable.
+        # If a test requires multiple target sets or variables, this is set up in the test.
+        assert isinstance(cls.da, xr.DataArray)
+        assert isinstance(cls.df, pd.Series)
 
         cls.dp = DataProcessor()
         _ = cls.dp([cls.da, cls.df])  # Compute normalisation parameters
@@ -413,10 +421,10 @@ class TestModel(unittest.TestCase):
         task = tl("2020-01-01")
         pred = model.predict(task, X_t=da_raw)
 
-        assert np.array_equal(
+        np.testing.assert_array_equal(
             pred["dummy_data"]["mean"]["latitude"], da_raw["latitude"]
         )
-        assert np.array_equal(
+        np.testing.assert_array_equal(
             pred["dummy_data"]["mean"]["longitude"], da_raw["longitude"]
         )
 
@@ -489,14 +497,14 @@ class TestModel(unittest.TestCase):
             # Check that nothing breaks and the correct parameters are returned
             pred = model.predict(task, X_t=X_t, pred_params=pred_params)
             for pred_param in pred_params:
-                assert pred_param in pred["var"]
+                assert pred_param in pred[self.var_ID]
 
             # Test mixture probs special case
             pred_params = ["mixture_probs"]
             pred = model.predict(task, X_t=self.da, pred_params=pred_params)
             for component in range(model.N_mixture_components):
                 pred_param = f"mixture_probs_{component}"
-                assert pred_param in pred["var"]
+                assert pred_param in pred[self.var_ID]
 
     def test_highlevel_predict_with_pred_params_xarray(self):
         """
@@ -524,14 +532,14 @@ class TestModel(unittest.TestCase):
             # Check that nothing breaks and the correct parameters are returned
             pred = model.predict(task, X_t=self.da, pred_params=pred_params)
             for pred_param in pred_params:
-                assert pred_param in pred["var"]
+                assert pred_param in pred[self.var_ID]
 
             # Test mixture probs special case
             pred_params = ["mixture_probs"]
             pred = model.predict(task, X_t=self.da, pred_params=pred_params)
             for component in range(model.N_mixture_components):
                 pred_param = f"mixture_probs_{component}"
-                assert pred_param in pred["var"]
+                assert pred_param in pred[self.var_ID]
 
     def test_highlevel_predict_with_invalid_pred_params(self):
         """Test that passing ``pred_params`` to ``.predict`` works."""
@@ -635,6 +643,66 @@ class TestModel(unittest.TestCase):
                 X_t=self.da,
                 ar_sample=True,
             )
+
+    def test_forecasting_model_predict_return_valid_times(self):
+        """Test that the times returned by a forecasting model are valid."""
+        init_dates = ["2020-01-01", "2020-01-02"]
+        expected_init_times = np.array(init_dates).astype(np.datetime64)
+
+        lead_times_days = [1, 2, 3]
+        expected_lead_times = np.array(
+            [np.timedelta64(lt, "D") for lt in lead_times_days]
+        )
+
+        expected_valid_times = np.array(
+            expected_init_times[:, None] + expected_lead_times[None, :]
+        )
+
+        tl = TaskLoader(
+            context=self.da,
+            target=[
+                self.da,
+            ]
+            * len(lead_times_days),
+            target_delta_t=lead_times_days,
+            time_freq="D",
+        )
+        model = ConvNP(self.dp, tl, unet_channels=(5, 5, 5), verbose=False)
+        tasks = tl(init_dates, context_sampling=10)
+
+        X_ts = [
+            # Gridded predictions (xarray)
+            self.da,
+            # Off-grid prediction (pandas)
+            np.array([[0.0, 0.5, 1.0], [0.0, 0.5, 1.0]]),
+        ]
+        for X_t in X_ts:
+            pred = model.predict(tasks, X_t=X_t)
+
+            pred_var = pred[self.var_ID]
+
+            if isinstance(pred_var, xr.Dataset):
+                # Check we can compute errors using the valid time coord ('time')
+                errors = compute_errors(pred, self.da.to_dataset())
+                for var_ID in errors.keys():
+                    assert tuple(errors[var_ID].dims) == (
+                        "init_time",
+                        "lead_time",
+                        "x1",
+                        "x2",
+                    )
+                    assert errors[var_ID].shape == pred[var_ID]["mean"].shape
+            elif isinstance(pred_var, pd.DataFrame):
+                # Makes coordinate checking easier by avoiding repeat values
+                pred_var = pred_var.to_xarray().isel(x1=0, x2=0)
+
+            np.testing.assert_array_equal(
+                pred_var.lead_time.values, expected_lead_times
+            )
+            np.testing.assert_array_equal(
+                pred_var.init_time.values, expected_init_times
+            )
+            np.testing.assert_array_equal(pred_var.time.values, expected_valid_times)
 
 
 def assert_shape(x, shape: tuple):
