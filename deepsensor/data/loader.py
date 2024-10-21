@@ -667,7 +667,6 @@ class TaskLoader:
         seed: Optional[int] = None,
     ) -> (np.ndarray, np.ndarray):
         """Sample a DataFrame according to a given strategy.
-        """
 
         Args:
             df (:class:`pandas.DataFrame` | :class:`pandas.Series`):
