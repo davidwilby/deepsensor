@@ -2,7 +2,7 @@
 pandas
 xarray
 rioxarray
-numpy
+numpy<2
 dask
 distributed
 neuralprocesses>=0.2.6
