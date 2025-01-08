@@ -861,7 +861,7 @@ class DeepSensorModel(ProbabilisticModel):
             patches_per_row: int,
             x1_ascend: bool = True,
             x2_ascend: bool = True,
-        ) -> dict:
+        ) -> Prediction:
             """Stitch patchwise predictions to form prediction at original extent.
 
             Parameters
@@ -1069,7 +1069,31 @@ class DeepSensorModel(ProbabilisticModel):
 
                 # Update the dictionary with the merged dataset
                 combined_dataset[var_name] = combined_array
-            return combined_dataset
+
+            ## Cast prediction into DeepSensor.Prediction object.
+            prediction = copy.deepcopy(patch_preds[0])
+
+            # Generate new blank DeepSensor.prediction object in original coordinate system.
+            for var_name_copy, data_array_copy in prediction.items():
+                # set x and y coords
+                stitched_preds = xr.Dataset(
+                    coords={
+                        orig_x1_name: X_t[orig_x1_name],
+                        orig_x2_name: X_t[orig_x2_name],
+                    }
+                )
+
+                # Set time to same as patched prediction
+                stitched_preds["time"] = data_array_copy["time"]
+
+                # set variable names to those in patched prediction, make values blank
+                for var_name_i in data_array_copy.data_vars:
+                    stitched_preds[var_name_i] = data_array_copy[var_name_i]
+                    stitched_preds[var_name_i][:] = np.nan
+                prediction[var_name_copy] = stitched_preds
+                prediction[var_name_copy] = combined_dataset[var_name_copy]
+
+            return prediction
 
         # load patch_size and stride from task
         patch_size = tasks[0]["patch_size"]
@@ -1168,31 +1192,7 @@ class DeepSensorModel(ProbabilisticModel):
             preds, patch_overlap_unnorm, patches_per_row, x1_ascending, x2_ascending
         )
 
-        ## Cast prediction into DeepSensor.Prediction object.
-        # TODO make this into seperate method.
-        prediction = copy.deepcopy(preds[0])
-
-        # Generate new blank DeepSensor.prediction object in original coordinate system.
-        for var_name_copy, data_array_copy in prediction.items():
-            # set x and y coords
-            stitched_preds = xr.Dataset(
-                coords={
-                    orig_x1_name: X_t[orig_x1_name],
-                    orig_x2_name: X_t[orig_x2_name],
-                }
-            )
-
-            # Set time to same as patched prediction
-            stitched_preds["time"] = data_array_copy["time"]
-
-            # set variable names to those in patched prediction, make values blank
-            for var_name_i in data_array_copy.data_vars:
-                stitched_preds[var_name_i] = data_array_copy[var_name_i]
-                stitched_preds[var_name_i][:] = np.nan
-            prediction[var_name_copy] = stitched_preds
-            prediction[var_name_copy] = stitched_prediction[var_name_copy]
-
-        return prediction
+        return stitched_prediction
 
 
 def add_valid_time_coord_to_pred_and_move_time_dims(pred: Prediction) -> Prediction:
