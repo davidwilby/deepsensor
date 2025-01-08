@@ -1,4 +1,5 @@
-from typing import Union, List, Optional
+import copy
+from typing import Union, List, Optional, Tuple
 
 import numpy as np
 import pandas as pd
@@ -364,3 +365,286 @@ def infer_prediction_modality_from_X_t(
             f"X_t must be and xarray, pandas or numpy object. Got {type(X_t)}."
         )
     return mode
+
+
+def stitch_clipped_predictions(
+    patch_preds: list[Prediction],
+    patch_overlap: int,
+    patches_per_row: int,
+    X_t,
+    orig_x1_name,
+    orig_x2_name,
+    x1_ascend: bool = True,
+    x2_ascend: bool = True,
+) -> Prediction:
+    """Stitch patchwise predictions to form prediction at original extent.
+
+    Parameters
+    ----------
+    patch_preds : list (class:`~.model.pred.Prediction`)
+        List of patchwise predictions
+
+    patch_overlap: int
+        Overlap between adjacent patches in pixels.
+
+    patches_per_row: int
+        Number of patchwise predictions in each row.
+
+    x1_ascend : bool
+        Boolean defining whether the x1 coords ascend (increase) from top to bottom, default = True.
+
+    x2_ascend : bool
+        Boolean defining whether the x2 coords ascend (increase) from left to right, default = True.
+
+    Returns:
+    -------
+    combined: dict
+        Dictionary object containing the stitched model predictions.
+    """
+
+    def _get_index(*args, x1=True) -> Union[int, Tuple[List[int], List[int]]]:
+        """Convert coordinates into pixel row/column (index).
+
+        Parameters
+        ----------
+        args : tuple
+            If one argument (numeric), it represents the coordinate value.
+            If two arguments (lists), they represent lists of coordinate values.
+
+        x1 : bool, optional
+            If True, compute index for x1 (default).
+            If False, compute index for x2.
+
+        Returns:
+        -------
+            Union[int, Tuple[List[int], List[int]]]
+            If one argument is provided and x1 is True or False, returns the index position.
+            If two arguments are provided, returns a tuple containing two lists:
+            - First list: indices corresponding to x1 coordinates.
+            - Second list: indices corresponding to x2 coordinates.
+
+        """
+        if len(args) == 1:
+            patch_coord = args
+            if x1:
+                coord_index = np.argmin(
+                    np.abs(X_t.coords[orig_x1_name].values - patch_coord)
+                )
+            else:
+                coord_index = np.argmin(
+                    np.abs(X_t.coords[orig_x2_name].values - patch_coord)
+                )
+            return coord_index
+
+        elif len(args) == 2:
+            patch_x1, patch_x2 = args
+            x1_index = [
+                np.argmin(np.abs(X_t.coords[orig_x1_name].values - target_x1))
+                for target_x1 in patch_x1
+            ]
+            x2_index = [
+                np.argmin(np.abs(X_t.coords[orig_x2_name].values - target_x2))
+                for target_x2 in patch_x2
+            ]
+            return (x1_index, x2_index)
+
+    # Get row/col index values of X_t. Order depends on whether coordinate is ascending or descending.
+    if x1_ascend:
+        data_x1 = (
+            X_t.coords[orig_x1_name].min().values,
+            X_t.coords[orig_x1_name].max().values,
+        )
+    else:
+        data_x1 = (
+            X_t.coords[orig_x1_name].max().values,
+            X_t.coords[orig_x1_name].min().values,
+        )
+    if x2_ascend:
+        data_x2 = (
+            X_t.coords[orig_x2_name].min().values,
+            X_t.coords[orig_x2_name].max().values,
+        )
+    else:
+        data_x2 = (
+            X_t.coords[orig_x2_name].max().values,
+            X_t.coords[orig_x2_name].min().values,
+        )
+
+    data_x1_index, data_x2_index = _get_index(data_x1, data_x2)
+    patches_clipped = {var_name: [] for var_name in patch_preds[0].keys()}
+
+    for i, patch_pred in enumerate(patch_preds):
+        for var_name, data_array in patch_pred.items():
+            if var_name in patch_pred:
+                # Get row/col index values of each patch. Order depends on whether coordinate is ascending or descending.
+                if x1_ascend:
+                    patch_x1 = (
+                        data_array.coords[orig_x1_name].min().values,
+                        data_array.coords[orig_x1_name].max().values,
+                    )
+                else:
+                    patch_x1 = (
+                        data_array.coords[orig_x1_name].max().values,
+                        data_array.coords[orig_x1_name].min().values,
+                    )
+                if x2_ascend:
+                    patch_x2 = (
+                        data_array.coords[orig_x2_name].min().values,
+                        data_array.coords[orig_x2_name].max().values,
+                    )
+                else:
+                    patch_x2 = (
+                        data_array.coords[orig_x2_name].max().values,
+                        data_array.coords[orig_x2_name].min().values,
+                    )
+                patch_x1_index, patch_x2_index = _get_index(patch_x1, patch_x2)
+
+                b_x1_min, b_x1_max = patch_overlap[0], patch_overlap[0]
+                b_x2_min, b_x2_max = patch_overlap[1], patch_overlap[1]
+
+                # Do not remove border for the patches along top and left of dataset and change overlap size for last patch in each row and column.
+                if patch_x2_index[0] == data_x2_index[0]:
+                    b_x2_min = 0
+                    # TODO: Try to resolve this issue in data/loader.py by ensuring patches are perfectly square.
+                    b_x2_max = b_x2_max
+
+                # At end of row (when patch_x2_index = data_x2_index), to calculate the number of pixels to remove from left hand side of patch:
+                elif patch_x2_index[1] == data_x2_index[1]:
+                    b_x2_max = 0
+                    patch_row_prev = patch_preds[i - 1]
+
+                    # If x2 is ascending, subtract previous patch x2 max value from current patch x2 min value to get bespoke overlap in column pixels.
+                    # To account for the clipping done to the previous patch, then subtract patch_overlap value in pixels
+                    # to get the number of pixels to remove from left hand side of patch.
+                    if x2_ascend:
+                        prev_patch_x2_max = _get_index(
+                            patch_row_prev[var_name].coords[orig_x2_name].max(),
+                            x1=False,
+                        )
+                        b_x2_min = (
+                            prev_patch_x2_max - patch_x2_index[0]
+                        ) - patch_overlap[1]
+
+                    # If x2 is descending. Subtract current patch max x2 value from previous patch min x2 value to get bespoke overlap in column pixels.
+                    # To account for the clipping done to the previous patch, then subtract patch_overlap value in pixels
+                    # to get the number of pixels to remove from left hand side of patch.
+                    else:
+                        prev_patch_x2_min = _get_index(
+                            patch_row_prev[var_name].coords[orig_x2_name].min(),
+                            x1=False,
+                        )
+                        b_x2_min = (
+                            patch_x2_index[0] - prev_patch_x2_min
+                        ) - patch_overlap[1]
+                else:
+                    b_x2_max = b_x2_max
+
+                if patch_x1_index[0] == data_x1_index[0]:
+                    b_x1_min = 0
+                # TODO: ensure this elif statement is robust to multiple patch sizes.
+                elif abs(patch_x1_index[1] - data_x1_index[1]) < 2:
+                    b_x1_max = 0
+                    b_x1_max = b_x1_max
+                    patch_prev = patch_preds[i - patches_per_row]
+                    if x1_ascend:
+                        prev_patch_x1_max = _get_index(
+                            patch_prev[var_name].coords[orig_x1_name].max(),
+                            x1=True,
+                        )
+                        b_x1_min = (
+                            prev_patch_x1_max - patch_x1_index[0]
+                        ) - patch_overlap[0]
+                    else:
+                        prev_patch_x1_min = _get_index(
+                            patch_prev[var_name].coords[orig_x1_name].min(),
+                            x1=True,
+                        )
+
+                        b_x1_min = (
+                            prev_patch_x1_min - patch_x1_index[0]
+                        ) - patch_overlap[0]
+                else:
+                    b_x1_max = b_x1_max
+
+                patch_clip_x1_min = int(b_x1_min)
+                patch_clip_x1_max = int(data_array.sizes[orig_x1_name] - b_x1_max)
+                patch_clip_x2_min = int(b_x2_min)
+                patch_clip_x2_max = int(data_array.sizes[orig_x2_name] - b_x2_max)
+
+                patch_clip = data_array.isel(
+                    **{
+                        orig_x1_name: slice(patch_clip_x1_min, patch_clip_x1_max),
+                        orig_x2_name: slice(patch_clip_x2_min, patch_clip_x2_max),
+                    }
+                )
+
+                patches_clipped[var_name].append(patch_clip)
+
+    # Create blank prediction
+    combined_dataset = copy.deepcopy(patches_clipped)
+
+    # Generate new blank DeepSensor.prediction object with same extent and coordinate system as X_t.
+    for var, data_array_list in combined_dataset.items():
+        first_patchwise_pred = data_array_list[0]
+
+        # Define coordinate extent and time
+        blank_pred = xr.Dataset(
+            coords={
+                orig_x1_name: X_t[orig_x1_name],
+                orig_x2_name: X_t[orig_x2_name],
+                "time": first_patchwise_pred["time"],
+            }
+        )
+
+        # Set variable names to those in patched predictions, set values to Nan.
+        for param in first_patchwise_pred.data_vars:
+            blank_pred[param] = first_patchwise_pred[param]
+            blank_pred[param][:] = np.nan
+        combined_dataset[var] = blank_pred
+
+    # Merge patchwise predictions to create final combined dataset.
+    # Iterate over each variable (key) in the prediction dictionary
+    for var_name, patches in patches_clipped.items():
+        # Retrieve the blank dataset for the current variable
+        combined_array = combined_dataset[var_name]
+
+        # Merge each patch into the combined dataset
+        for patch in patches:
+            for var in patch.data_vars:
+                # Reindex the patch to catch any slight rounding errors and misalignment with the combined dataset
+                reindexed_patch = patch[var].reindex_like(
+                    combined_array[var], method="nearest", tolerance=1e-6
+                )
+
+                # Combine data, prioritizing non-NaN values from patches
+                combined_array[var] = combined_array[var].where(
+                    np.isnan(reindexed_patch), reindexed_patch
+                )
+
+        # Update the dictionary with the merged dataset
+        combined_dataset[var_name] = combined_array
+
+    ## Cast prediction into DeepSensor.Prediction object.
+    prediction = copy.deepcopy(patch_preds[0])
+
+    # Generate new blank DeepSensor.prediction object in original coordinate system.
+    for var_name_copy, data_array_copy in prediction.items():
+        # set x and y coords
+        stitched_preds = xr.Dataset(
+            coords={
+                orig_x1_name: X_t[orig_x1_name],
+                orig_x2_name: X_t[orig_x2_name],
+            }
+        )
+
+        # Set time to same as patched prediction
+        stitched_preds["time"] = data_array_copy["time"]
+
+        # set variable names to those in patched prediction, make values blank
+        for var_name_i in data_array_copy.data_vars:
+            stitched_preds[var_name_i] = data_array_copy[var_name_i]
+            stitched_preds[var_name_i][:] = np.nan
+        prediction[var_name_copy] = stitched_preds
+        prediction[var_name_copy] = combined_dataset[var_name_copy]
+
+    return prediction
